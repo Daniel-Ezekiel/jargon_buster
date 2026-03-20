@@ -4,7 +4,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 interface WorkerMessage {
   status: "initiate" | "ready" | "complete";
-  output?: unknown[];
+  result?: {
+    topLabel: string,
+    topLabelScore: number,
+    isConfident: boolean,
+    isValidClauseForSRA: boolean,
+    routeToCloud: boolean,
+    allLabels: string[],
+    allScores: number[],
+  };
 }
 
 export default function Home() {
@@ -36,7 +44,6 @@ export default function Home() {
           break;
         case "complete":
           setResult(e.data);
-          console.log(e.data);
           break;
       }
     };
@@ -47,7 +54,7 @@ export default function Home() {
     // Define a cleanup function for when the component is unmounted.
     return () =>
       worker.current?.removeEventListener("message", onMessageReceived);
-  });
+  }, []);
 
   const classify = useCallback((text: string) => {
     if (worker.current) {
