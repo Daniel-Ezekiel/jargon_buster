@@ -4,6 +4,7 @@ import {
   PipelineType,
   ProgressCallback,
   ZeroShotClassificationPipeline,
+  AutoTokenizer,
 } from "@huggingface/transformers";
 
 // Skip local model check
@@ -23,6 +24,7 @@ const CLAUSE_LABELS = [
 class PipelineSingleton {
   static task: PipelineType = "zero-shot-classification";
   static model = "Xenova/distilbert-base-uncased-mnli";
+  static tokenizer = AutoTokenizer.from_pretrained(this.model);
   static instance: ZeroShotClassificationPipeline | null = null;
 
   static async getInstance(progress_callback: ProgressCallback | undefined) {
@@ -57,8 +59,6 @@ self.addEventListener("message", async (event) => {
   const topLabel = output["labels"][topLabelIdx]
   const isConfident = topLabelScore > 0.5
   const isValidClauseForSRA = topLabel !== NONE_LABEL
-
-  console.log(topLabelIdx, topLabel, topLabelScore, isConfident, isValidClauseForSRA)
 
   const results = {
     topLabel,
