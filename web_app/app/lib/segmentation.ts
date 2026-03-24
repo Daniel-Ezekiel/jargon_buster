@@ -37,6 +37,6 @@ export const segmentation = async (text: string) => {
         }
     }
 
-    console.log(segments, " finalised segments creation.");
+    // console.log(segments, " finalised segments creation.");
     return segments;
 }

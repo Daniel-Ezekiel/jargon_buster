@@ -4,7 +4,6 @@ import {
   PipelineType,
   ProgressCallback,
   ZeroShotClassificationPipeline,
-  AutoTokenizer,
 } from "@huggingface/transformers";
 import { segmentation } from "./lib/segmentation";
 
@@ -18,7 +17,7 @@ const CLAUSE_LABELS = [
   "Non-compete",
   "Uncapped Liability",
   "Cap on Liability",
-  NONE_LABEL
+  NONE_LABEL,
 ];
 
 // Use the Singleton pattern to enable lazy construction of the pipeline.
@@ -29,7 +28,11 @@ class PipelineSingleton {
 
   static async getInstance(progress_callback: ProgressCallback | undefined) {
     if (this.instance === null) {
-      this.instance = await pipeline(this.task, this.model, { progress_callback }) as unknown as ZeroShotClassificationPipeline;
+      this.instance = (await pipeline(this.task, this.model, {
+        dtype: "q8",
+        device: "webgpu",
+        progress_callback,
+      })) as unknown as ZeroShotClassificationPipeline;
     }
     return this.instance;
   }
@@ -49,29 +52,41 @@ self.addEventListener("message", async (event) => {
 
   const segments = await segmentation(legal_text);
 
-  console.log("Segments:", segments);
+  const results = [];
 
-  // Actually perform the classification
-  const output = await classifier(legal_text, CLAUSE_LABELS, {
-    multi_label: false,
-  }) as {labels: string[], scores: number[], sequence: string};
+  for (const segment of segments) {
+    // Actually perform the classification
+    const output = (await classifier(segment.text, CLAUSE_LABELS, {
+      multi_label: false,
+    })) as { labels: string[]; scores: number[]; sequence: string };
 
-  
-  const maxScore = Math.max(...output.scores);
-  const topLabelIdx = output.scores.indexOf(maxScore);
-  const topLabelScore = output["scores"][topLabelIdx]
-  const topLabel = output["labels"][topLabelIdx]
-  const isConfident = topLabelScore > 0.5
-  const isValidClauseForSRA = topLabel !== NONE_LABEL
+    const maxScore = Math.max(...output.scores);
+    const topLabelIdx = output.scores.indexOf(maxScore);
+    const topLabelScore = output["scores"][topLabelIdx];
+    const topLabel = output["labels"][topLabelIdx];
+    const isConfident = topLabelScore > 0.5;
+    const isValidClauseForSRA = topLabel !== NONE_LABEL;
 
-  const results = {
-    topLabel,
-    topLabelScore,
-    isConfident,
-    isValidClauseForSRA,
-    routeToCloud: !isValidClauseForSRA || !isConfident,
-    allLabels: output.labels,
-    allScores: output.scores,
+    results.push({
+      segmentId: segment.id,
+      segmentSize: segment.tokenCount,
+      topLabel,
+      topLabelScore,
+      isConfident,
+      isValidClauseForSRA,
+      routeToCloud: !isValidClauseForSRA || !isConfident,
+      allLabels: output.labels,
+      allScores: output.scores,
+    });
+
+    console.log(`segment-${segment.id+1}/${segments.length} complete:`)
+
+    // Stream each result back as it completes
+    self.postMessage({
+      status: `segment-${segment.id} complete:`,
+      result: results.at(-1),
+      total: segments.length,
+    });
   }
 
   // Send the output back to the main thread
