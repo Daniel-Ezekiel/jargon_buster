@@ -30,7 +30,7 @@ class PipelineSingleton {
     if (this.instance === null) {
       this.instance = (await pipeline(this.task, this.model, {
         dtype: "q8",
-        device: "webgpu",
+        // device: "webgpu",
         progress_callback,
       })) as unknown as ZeroShotClassificationPipeline;
     }
