@@ -52,7 +52,6 @@ export default function Home() {
 
     // Create a callback function for messages from the worker thread.
     const onMessageReceived = (e: MessageEvent<WorkerMessage>) => {
-      console.log(e.data)
       switch (e.data.status) {
         case "initiate":
           setReady(false);
