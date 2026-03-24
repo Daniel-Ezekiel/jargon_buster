@@ -30,7 +30,7 @@ class PipelineSingleton {
     if (this.instance === null) {
       this.instance = (await pipeline(this.task, this.model, {
         dtype: "q8",
-        // device: "webgpu",
+        device: "wasm",
         progress_callback,
       })) as unknown as ZeroShotClassificationPipeline;
     }
@@ -74,7 +74,7 @@ self.addEventListener("message", async (event) => {
       topLabelScore,
       isConfident,
       isValidClauseForSRA,
-      routeToCloud: !isValidClauseForSRA || !isConfident,
+      routeToCloud: isValidClauseForSRA && !isConfident,
       allLabels: output.labels,
       allScores: output.scores,
     });
