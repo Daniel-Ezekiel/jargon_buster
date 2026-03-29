@@ -1,11 +1,21 @@
-import {
-  pipeline,
-  env,
-  PipelineType,
-  ProgressCallback,
-  ZeroShotClassificationPipeline,
-} from "@huggingface/transformers";
+import { env, ProgressCallback } from "@huggingface/transformers";
 import { segmentation } from "./lib/segmentation";
+import { MultiModelSingleton } from "./lib/singleton";
+import { applyAIRedaction, applyRegexRedaction, Entity } from "./lib/redact";
+
+export type resultTypes = {
+  segmentId: number;
+  segmentSize: number;
+  topLabel: string;
+  topLabelScore: number;
+  isConfident: boolean;
+  isValidClauseForSRA: boolean;
+  routeToCloud: boolean;
+  allLabels: string[];
+  allScores: number[];
+  redactedText?: string; // Added to pass the safe text to UI
+  cloudOutcome?: string;
+};
 
 // Skip local model check
 env.allowLocalModels = false;
@@ -20,42 +30,23 @@ const CLAUSE_LABELS = [
   NONE_LABEL,
 ];
 
-// Use the Singleton pattern to enable lazy construction of the pipeline.
-class PipelineSingleton {
-  static task: PipelineType = "zero-shot-classification";
-  static model = "Xenova/distilbert-base-uncased-mnli";
-  static instance: ZeroShotClassificationPipeline | null = null;
-
-  static async getInstance(progress_callback: ProgressCallback | undefined) {
-    if (this.instance === null) {
-      this.instance = (await pipeline(this.task, this.model, {
-        dtype: "q8",
-        device: "wasm",
-        progress_callback,
-      })) as unknown as ZeroShotClassificationPipeline;
-    }
-    return this.instance;
-  }
-}
-
 // Listen for messages from the main thread
 self.addEventListener("message", async (event) => {
   // Retrieve the classification pipeline. When called for the first time,
   // this will load the pipeline and save it for future use.
-  const classifier = await PipelineSingleton.getInstance((x) => {
-    // We also add a progress callback to the pipeline so that we can
-    // track model loading.
-    self.postMessage(x);
-  });
+  const progressCallback: ProgressCallback = (x) => {
+    self.postMessage({ status: "loading", data: x });
+  };
 
+  const classifier = await MultiModelSingleton.getClassifier(progressCallback);
   const legal_text: string = event.data.text;
-
   const segments = await segmentation(legal_text);
+  const results: resultTypes[] = [];
 
-  const results = [];
+  self.postMessage({ status: "ready" }); // UI update to indicate worker is ready to classify segments.
 
   for (const segment of segments) {
-    // Actually perform the classification
+    // Step 1: CLASSIFY -Actually perform the classification
     const output = (await classifier(segment.text, CLAUSE_LABELS, {
       multi_label: false,
     })) as { labels: string[]; scores: number[]; sequence: string };
@@ -64,34 +55,63 @@ self.addEventListener("message", async (event) => {
     const topLabelIdx = output.scores.indexOf(maxScore);
     const topLabelScore = output["scores"][topLabelIdx];
     const topLabel = output["labels"][topLabelIdx];
-    const isConfident = topLabelScore > 0.5;
+    const isConfident = topLabelScore > 0.4;
     const isValidClauseForSRA = topLabel !== NONE_LABEL;
+    const routeToCloud = isValidClauseForSRA && !isConfident;
 
-    results.push({
+    const finalSegmentResult: resultTypes = {
       segmentId: segment.id,
       segmentSize: segment.tokenCount,
       topLabel,
       topLabelScore,
       isConfident,
       isValidClauseForSRA,
-      routeToCloud: isValidClauseForSRA && !isConfident,
+      routeToCloud,
       allLabels: output.labels,
       allScores: output.scores,
-    });
+    };
 
-    console.log(`segment-${segment.id+1}/${segments.length} complete:`)
+    if (routeToCloud) {
+      const regexRedacted = applyRegexRedaction(segment.text); // cased text
+      const ner = await MultiModelSingleton.getNER(progressCallback);
 
-    // Stream each result back as it completes
+      // aggregation_strategy: "simple" merges B-/I- tokens automatically
+      const entities = await ner(regexRedacted, {
+        aggregation_strategy: "simple",
+      } as never);
+
+      console.log(`Entities found in segment ${segment.id}:`, entities);
+
+      const fullyRedacted = applyAIRedaction(
+        regexRedacted,
+        entities as unknown as Entity[],
+      );
+
+      finalSegmentResult.redactedText = fullyRedacted;
+      finalSegmentResult.cloudOutcome =
+        "Segment redacted and staged for Cloud LLM processing.";
+    }
+
+    results.push(finalSegmentResult);
+
+    // Stream this specific segment back to the React UI immediately
     self.postMessage({
-      status: `segment-${segment.id} complete:`,
-      result: results.at(-1),
-      total: segments.length,
+      status: "segment_complete",
+      result: finalSegmentResult,
+      progress: `${segment.id + 1}/${segments.length}`,
     });
+
+    console.log(`segment-${segment.id + 1}/${segments.length} complete`);
+
+    // // Stream each result back as it completes
+    // self.postMessage({
+    //   status: `segment-${segment.id} complete:`,
+    //   result: results.at(-1),
+    //   total: segments.length,
+    // });
   }
 
   // Send the output back to the main thread
-  self.postMessage({
-    status: "complete",
-    results,
-  });
+  // Final completion signal
+  self.postMessage({ status: "complete", results });
 });
