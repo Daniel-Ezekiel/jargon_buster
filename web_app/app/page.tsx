@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { resultTypes } from "./worker";
+import { useState, useEffect, useRef } from "react";
+import { cloudResultTypes, edgeAndHybridResultTypes } from "./worker";
+import SegmentCard from "./_components/segmentCard";
+import { telemetry, TelemetryLog } from "./lib/telemetry";
 
 interface WorkerMessage {
   status:
@@ -11,10 +13,11 @@ interface WorkerMessage {
     | "segment_complete"
     | "complete"
     | "error";
-  result?: resultTypes;
-  results?: resultTypes[];
+  result?: edgeAndHybridResultTypes | cloudResultTypes;
+  results?: (edgeAndHybridResultTypes | cloudResultTypes)[];
   data?: never;
   progress?: string;
+  telemetryPayload?: TelemetryLog;
 }
 
 // interface ClassificationResult {
@@ -24,11 +27,15 @@ interface WorkerMessage {
 
 export default function Home() {
   /* TODO: Add state variables */ // Keep track of the classification result and the model loading status.
-  // const [legalText, setLegalText] = useState<string>("");
-  const [results, setResults] = useState<resultTypes[]>([]);
+  const [results, setResults] = useState<(edgeAndHybridResultTypes | cloudResultTypes)[]>([]);
   const [ready, setReady] = useState<boolean>(false);
+  const [srAction, setSrAction] = useState<"edge" | "cloud" | "hybrid">("edge");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<string>("");
+
+  const handleSrActionChange = (action: "edge" | "cloud" | "hybrid") => {
+    setSrAction(action);
+  };
 
   const handleFileUpload = () => {
     const docFile = (document.querySelector("#doc") as HTMLInputElement)
@@ -38,7 +45,11 @@ export default function Home() {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       if (worker.current) {
-        worker.current.postMessage({ text: reader.result as string });
+        worker.current.postMessage({
+          legal_text: reader.result as string,
+          srAction,
+          contractFilename: docFile.name,
+        });
       }
     });
     reader.readAsText(docFile);
@@ -60,7 +71,7 @@ export default function Home() {
     const onMessageReceived = (e: MessageEvent<WorkerMessage>) => {
       switch (e.data.status) {
         case "initiate":
-          if(ready) setReady(false);
+          if (ready) setReady(false);
           break;
         case "loading":
           // Optional: handle model download progress here
@@ -74,10 +85,15 @@ export default function Home() {
           // Stream the new segment into the UI array immediately
           if (e.data.result) {
             setResults((prev) => [
-              ...(prev as resultTypes[] | []),
+              ...(prev as (edgeAndHybridResultTypes | cloudResultTypes)[] | []),
               e.data.result!,
             ]);
+
+            if (e.data.telemetryPayload) {
+              telemetry.logSegment(e.data.telemetryPayload);
+            }
           }
+
           if (e.data.progress) setProgress(e.data.progress);
           break;
         case "complete":
@@ -94,12 +110,6 @@ export default function Home() {
       worker.current?.removeEventListener("message", onMessageReceived);
   }, []);
 
-  // const classify = useCallback((text: string) => {
-  //   if (worker.current) {
-  //     worker.current.postMessage({ text });
-  //   }
-  // }, []);
-
   return (
     /* TODO: See below */
     <main className="flex min-h-screen flex-col items-center p-12">
@@ -113,16 +123,50 @@ export default function Home() {
       </section>
 
       <section className="mt-4 grid gap-5">
+        <div className="place-self-center flex items-center space-between gap-5">
+          <button
+            disabled={isProcessing}
+            onClick={() => handleSrActionChange("edge")}
+            className={`border-gray-400 font-medium w-32 py-2 px-4 rounded-md cursor-pointer hover:scale-105 transition-transform disabled:cursor-not-allowed ${srAction === "edge" ? "ring-2 ring-emerald-400 bg-emerald-700 hover:bg-emerald-800" : "bg-sky-600 hover:bg-sky-700"}`}
+          >
+            Edge Only
+          </button>
+          <button
+            disabled={isProcessing}
+            onClick={() => handleSrActionChange("cloud")}
+            className={`border-gray-400 font-medium w-32 py-2 px-4 rounded-md cursor-pointer hover:scale-105  transition-transform disabled:cursor-not-allowed ${srAction === "cloud" ? "ring-2 ring-emerald-400 bg-emerald-700 hover:bg-emerald-800" : "bg-sky-600 hover:bg-sky-700"}`}
+          >
+            Cloud Only
+          </button>
+          <button
+            disabled={isProcessing}
+            onClick={() => handleSrActionChange("hybrid")}
+            className={`border-gray-400 font-medium w-32 py-2 px-4 rounded-md cursor-pointer hover:scale-105  transition-transform disabled:cursor-not-allowed ${srAction === "hybrid" ? "ring-2 ring-emerald-400 bg-emerald-700 hover:bg-emerald-800" : "bg-sky-600 hover:bg-sky-700"}`}
+          >
+            Hybrid
+          </button>
+          <button
+            disabled={isProcessing}
+            onClick={() =>
+              telemetry.exportToJSON(`telemetry_results.json`)
+            }
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow-lg transition-colors"
+          >
+            Download Telemetry JSON
+          </button>
+        </div>
+
         <div className="place-self-center flex gap-4 items-center">
           <input
             type="file"
             id="doc"
+            disabled={isProcessing}
             className="p-2 bg-slate-800 border border-slate-600 rounded-md cursor-pointer text-sm file:bg-slate-700 file:border-slate-600 file:text-slate-300 hover:file:bg-slate-600 disabled:file:bg-slate-500 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             disabled={isProcessing}
-            className="px-6 py-2 rounded-md bg-sky-600 hover:bg-sky-500 disabled:bg-slate-600 font-semibold cursor-pointer disabled:cursor-not-allowed"
+            className="px-6 py-2 rounded-md bg-sky-600 hover:scale-105 hover:bg-sky-700 transition-transform disabled:bg-slate-600 font-semibold cursor-pointer disabled:cursor-not-allowed"
             onClick={handleFileUpload}
           >
             {isProcessing ? "Processing..." : "Upload and Classify"}
@@ -138,54 +182,10 @@ export default function Home() {
         {results.length > 0 && (
           <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
             {results.map((res) => (
-              <div 
-                key={res.segmentId} 
-                className={`p-4 rounded border-l-4 shadow-lg ${
-                  res.routeToCloud ? "bg-slate-800 border-yellow-500" : "bg-slate-800 border-emerald-500"
-                }`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-xs text-slate-400 font-mono">ID: {res.segmentId} | Tokens: {res.segmentSize}</span>
-                  <span className={`text-xs px-2 py-1 rounded font-bold ${res.routeToCloud ? "bg-yellow-900 text-yellow-300" : "bg-emerald-900 text-emerald-300"}`}>
-                    {res.routeToCloud ? "CLOUD BOUND" : "EDGE SECURED"}
-                  </span>
-                </div>
-                
-                <h3 className="font-bold text-lg mb-1">{res.topLabel}</h3>
-                <p className="text-sm mb-3">Confidence: <span className="font-mono">{(res.topLabelScore * 100).toFixed(1)}%</span></p>
-                
-                {res.routeToCloud && res.redactedText && (
-                  <div className="mt-3 p-3 bg-slate-900 rounded text-xs text-slate-300 font-mono overflow-y-auto max-h-32">
-                    <span className="text-yellow-400 block mb-1">▶ Redacted Payload:</span>
-                    {res.redactedText}
-                  </div>
-                )}
-              </div>
+              <SegmentCard key={res.segmentId} res={res} srAction={srAction} />
             ))}
           </div>
         )}
-
-        {/* <div>
-            <textarea
-              className="w-full max-w-xl p-2 border border-gray-300 rounded mb-4"
-              placeholder="Enter text here"
-              rows={23}
-              value={legalText}
-              onChange={(e) => setLegalText(e.currentTarget.value)}
-            ></textarea>
-            {legalText && (
-              <button
-                type="button"
-                className="cursor-pointer px-4 py-2 border-2 border-gray-400 rounded-sm bg-slate-800 hover:bg-slate-700"
-                onClick={() => {
-                  setReady(false);
-                  if (legalText) classify(legalText);
-                }}
-              >
-                Classify Text
-              </button>
-            )}
-          </div> */}
       </section>
     </main>
   );

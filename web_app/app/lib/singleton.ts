@@ -19,8 +19,8 @@ export class MultiModelSingleton {
   static async getClassifier(progress_callback: ProgressCallback | undefined) {
     if (this.classifierInstance === null) {
       this.classifierInstance = (await pipeline(this.classifierTask, this.classifierModel, {
-        dtype: "q8",
-        device: "wasm",
+        dtype: "fp32",
+        device: "webgpu",
         progress_callback,
       })) as unknown as ZeroShotClassificationPipeline;
     }

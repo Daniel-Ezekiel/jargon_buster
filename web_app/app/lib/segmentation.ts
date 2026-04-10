@@ -1,7 +1,7 @@
 import { AutoTokenizer, PreTrainedTokenizer } from "@huggingface/transformers";
 
 const MODEL_ID = "Xenova/distilbert-base-uncased-mnli";
-const CHUNK_SIZE = 500;
+const CHUNK_SIZE = 400;
 const OVERLAP = 50;
 
 let tokenizerInstance: PreTrainedTokenizer | null = null;
