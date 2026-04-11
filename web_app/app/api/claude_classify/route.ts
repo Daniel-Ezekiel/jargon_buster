@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
+      model: "claude-haiku-4-5",
       max_tokens: 1024,
       messages: [
         { role: "assistant", content: instructions },
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       topLabel,
       confidence,
-      source: "Claude Opus 4.6",
+      source: "Claude Haiku 4.5",
     });
   } catch (err) {
     console.error("[API Gateway] Error:", err);

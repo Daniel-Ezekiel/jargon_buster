@@ -1,6 +1,8 @@
 import { applyRegexRedaction } from "./redact";
 
 export const cloudClassify = async (segmentText: string, segmentId: number) => {
+  const url = process.env.NODE_ENV === "production" ? process.env.NEXT_PUBLIC_PROD_URL : process.env.NEXT_PUBLIC_LOCAL_URL; // TODO: Make this dynamic based on environment (dev vs prod)
+
   const regexRedactedText = applyRegexRedaction(segmentText); // cased text
   // const ner = await MultiModelSingleton.getNER(progressCallback);
 
@@ -19,9 +21,9 @@ export const cloudClassify = async (segmentText: string, segmentId: number) => {
 //   const redactedText = regexRedacted; // For now, we only apply regex redaction before sending to the cloud. AI redaction can be added back in once we have a reliable NER solution.
 
   try {
-    // const cloudResponse = await fetch(`http://localhost:3000/api/classify`, {
-    // const cloudResponse = await fetch(`http://localhost:3000/api/gemini_classify`, {
-    const cloudResponse = await fetch(`http://localhost:3000/api/claude_classify`, {
+    // const cloudResponse = await fetch(`${url}/api/classify`, {
+    const cloudResponse = await fetch(`${url}/api/gemini_classify`, {
+    // const cloudResponse = await fetch(`${url}/api/claude_classify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

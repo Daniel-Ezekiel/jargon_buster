@@ -238,7 +238,7 @@ self.addEventListener("message", async (event) => {
         source: (
           finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes
         ).routeToCloud
-          ? "Claude Opus 4.6"
+          ? "Gemini 2.5 Flash"
           : "distilbert",
         latencyMs,
       },
