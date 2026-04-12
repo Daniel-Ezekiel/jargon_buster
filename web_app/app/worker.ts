@@ -40,6 +40,9 @@ export type cloudSuccessResponse = {
 
 export type cloudErrorResponse = {
   error: string;
+  topLabel?: null;
+  confidence?: null;
+  source?: null;
 };
 
 // Skip local model check
@@ -152,12 +155,6 @@ self.addEventListener("message", async (event) => {
       const allLabels = output.labels;
       const allScores = output.scores;
 
-      if (routeToCloud) {
-        const cloudOutcome = await cloudClassify(segment.text, segment.id);
-        (finalSegmentResult as edgeAndHybridResultTypes).cloudOutcome =
-          cloudOutcome;
-      }
-
       (finalSegmentResult as edgeAndHybridResultTypes).segmentId = segment.id;
       (finalSegmentResult as edgeAndHybridResultTypes).segmentSize =
         segment.tokenCount;
@@ -173,11 +170,23 @@ self.addEventListener("message", async (event) => {
       (finalSegmentResult as edgeAndHybridResultTypes).allLabels = allLabels;
       (finalSegmentResult as edgeAndHybridResultTypes).allScores = allScores; // Pass the regex redacted text to the UI regardless of routing decision
 
+      if (routeToCloud) {
+        const cloudOutcome = await cloudClassify(segment.text, segment.id);
+        (finalSegmentResult as edgeAndHybridResultTypes).cloudOutcome =
+          cloudOutcome;
+        // (finalSegmentResult as edgeAndHybridResultTypes).topLabel =
+        //   cloudOutcome["topLabel"] || topLabel; // Fall back to edge label if cloud classification fails
+        // (finalSegmentResult as edgeAndHybridResultTypes).topLabelScore =
+        //   cloudOutcome["confidence"] ||
+        //   +parseFloat(`${topLabelScore * 100}`).toFixed(2);
+      }
+
       results.push(finalSegmentResult as edgeAndHybridResultTypes);
     } else {
       const cloudOutcome = await cloudClassify(segment.text, segment.id);
       // console.log(`Cloud classification completed for segment ${segment.id}:`, cloudOutcome);
 
+      (finalSegmentResult as cloudResultTypes).cloudOutcome = cloudOutcome;
       (finalSegmentResult as cloudResultTypes).segmentId = segment.id;
       (finalSegmentResult as cloudResultTypes).segmentSize = segment.tokenCount;
       (finalSegmentResult as cloudResultTypes).topLabel =
@@ -215,8 +224,11 @@ self.addEventListener("message", async (event) => {
               ? "CLOUD_ONLY"
               : "EDGE_ONLY",
         confidenceScore: (
-          finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes
-        ).topLabelScore,
+          finalSegmentResult as cloudResultTypes | edgeAndHybridResultTypes
+        ).routeToCloud
+          ? (finalSegmentResult as cloudResultTypes).cloudOutcome?.confidence
+          : (finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes)
+              .topLabelScore,
         routingDecision:
           srAction === "cloud"
             ? "CLOUD_BOUND"
@@ -234,7 +246,10 @@ self.addEventListener("message", async (event) => {
           : false,
         classificationResult: (
           finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes
-        ).topLabel,
+        ).routeToCloud
+          ? (finalSegmentResult as cloudResultTypes).cloudOutcome?.topLabel
+          : (finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes)
+              .topLabel,
         source: (
           finalSegmentResult as edgeAndHybridResultTypes | cloudResultTypes
         ).routeToCloud

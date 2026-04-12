@@ -5,16 +5,14 @@ const ai = new GoogleGenAI({});
 
 const USE_MOCK_RESPONSE = false;
 
-const instructions = `You are an expert commercial lawyer auditing corporate contracts. Classify the following contract segment into exactly ONE of these five categories based on its PRIMARY legal mechanism.
+const instructions = `You are an expert commercial lawyer auditing corporate contracts. Classify the following contract segment into exactly ONE of these five categories:
 
-CRITICAL RULE: Only classify as a named category if the segment ITSELF enacts or constitutes that legal mechanism. If the segment merely references, defines, or mentions a concept in passing, classify as "None of the above".
-
-USE THESE DEFINITIONS:
-1. "Termination for Convenience": A clause that directly grants a party the right to terminate the agreement without cause or breach. Must contain an operative termination right, not merely a reference to termination.
-2. "Non-compete": A clause that directly restricts a party from engaging in competing activities, building rival products, or acting as an exclusive supplier. Must contain an operative restriction, not merely a reference to competition.
-3. "Cap on Liability": A clause that directly sets a maximum financial ceiling on damages a party can be held liable for. Must contain an operative liability limit with a defined ceiling.
-4. "Uncapped Liability": A clause that directly creates or preserves unlimited financial exposure for a party. Must contain an operative carve-out from a liability cap or an explicit statement of unlimited liability.
-5. "None of the above": The segment is a definition, recital, boilerplate, warranty, operational obligation, or merely references one of the above concepts without itself enacting it. When in doubt, choose this.
+USE THESE EXACT DEFINITIONS:
+1. "Non-compete": This clause restricts a party from competing with the other party, operating in certain geographic regions, engaging in specific business sectors, or entering agreements with competing entities during or after the term of the agreement.
+2. "Termination for Convenience": Either party may terminate this agreement without cause by providing written notice to the other party and allowing a specified notice period to expire, without the need to demonstrate breach or fault.
+3. "Uncapped Liability": A party's financial liability for breach of this agreement is not limited or capped, including liability for indemnification obligations, intellectual property infringement, confidentiality breaches, or wilful misconduct.
+4. "Cap on Liability": This clause limits the maximum financial liability of a party upon breach of its obligations, including caps on damages, indemnification amounts, or time limitations within which claims must be brought.
+5. "None of the Above": This section covers general contract administration including governing law, jurisdiction, party definitions, document title, recitals, payment terms, warranties, representations, notices, assignment, confidentiality, intellectual property ownership, dispute resolution, force majeure, amendments, entire agreement, and other standard boilerplate provisions not related to competition restrictions, termination rights, or liability limits.
 
 Respond strictly with the category name followed by a confidence score (e.g., "Cap on Liability 0.95"). Do not output any explanations, formatting, or conversational text.`;
 
