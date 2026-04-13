@@ -1,0 +1,4 @@
+telemetry_data/extra_parameter-testing_files/*
+telemetry_data/parameter_testing_telemetry_files/*
+test.py
+f1_results.json
